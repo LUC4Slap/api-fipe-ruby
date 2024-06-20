@@ -2,9 +2,16 @@ GEM
   remote: https://rubygems.org/
   specs:
     base64 (0.2.0)
+    bigdecimal (3.1.8)
+    matrix (0.4.2)
     multi_json (1.15.0)
     mustermann (3.0.0)
       ruby2_keywords (~> 0.0.1)
+    pdf-core (0.10.0)
+    prawn (2.5.0)
+      matrix (~> 0.4)
+      pdf-core (~> 0.10.0)
+      ttfunk (~> 1.8)
     rack (3.0.11)
     rack-protection (4.0.0)
       base64 (>= 0.1.0)
@@ -25,11 +32,14 @@ GEM
       sinatra (= 4.0.0)
       tilt (~> 2.0)
     tilt (2.3.0)
+    ttfunk (1.8.0)
+      bigdecimal (~> 3.1)
 
 PLATFORMS
   x64-mingw-ucrt
 
 DEPENDENCIES
+  prawn
   rack
   sinatra
   sinatra-contrib
