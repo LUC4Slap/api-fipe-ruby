@@ -4,9 +4,30 @@ require 'roo'
 require 'json'
 require 'prawn'
 require 'prawn/table'
+require 'wicked_pdf'
+require 'erb'
+require 'fileutils'
+require 'pg'
+
+conn = PG.connect( 
+  dbname: 'uploads',
+  host: 'localhost',
+  port: 5432,
+  user: 'postgres',
+  password: '123456'
+)
 
 set :public_folder, 'public'
+set :views, 'views'
 set :upload_folder, 'uploads'
+
+# Helper para converter HTML para PDF
+def html_to_pdf(html_content, output_path)
+  Prawn::Document.generate(output_path, page_layout: :landscape, margin: [20, 20, 20, 20]) do |pdf|
+    pdf.font "Helvetica"
+    pdf.text html_content, inline_format: true
+  end
+end
 
 # Endpoint para verificar se a API está funcionando
 get '/' do
@@ -27,7 +48,8 @@ post '/upload' do
     File.open(filepath, 'wb') do |f|
       f.write(file.read)
     end
-
+    conn.exec("INSERT INTO caminho_arquivos (caminho) VALUES ('#{filepath}')")
+    conn.close
     status 200
     body "Arquivo #{filename} foi carregado com sucesso!"
   else
@@ -36,9 +58,75 @@ post '/upload' do
   end
 end
 
+get '/listar_arquivos_db' do
+  query = "SELECT * FROM caminho_arquivos"
+  arquivos = []
+  result = conn.exec(query)
+  result.each do |row|
+    arquivos << row['caminho']
+  end
+  # conn.close
+  status 200
+  content_type :json
+  { data: arquivos }.to_json
+end
+
 # Endpoint para ler as linhas de um arquivo .xlsx
+# get '/ler_arquivo' do
+#   filename = params[:filename]
+#   sheet_number = params[:planilha]&.to_i or 0
+
+#   # Verifica se o parâmetro filename foi fornecido
+#   if filename.nil? || filename.empty?
+#     status 400
+#     body "Parâmetro 'filename' não especificado!"
+#   else
+#     filepath = "#{settings.upload_folder}/#{filename}"
+
+#     # Verifica se o arquivo existe
+#     if File.exist?(filepath)
+#       # Ler o arquivo .xlsx usando roo
+#       xlsx = Roo::Spreadsheet.open(filepath)
+#       sheet = xlsx.sheet(sheet_number)
+
+#       # Extrair cabeçalhos
+#       headers = sheet.row(0)
+
+#       # Preparar dados para retorno
+#       data = []
+
+#       # Limitar a leitura aos primeiros 50 registros
+#       max_rows = [sheet.last_row, 51].min # Incluindo a linha do cabeçalho
+
+#       # Iterar sobre as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
+#       (2..sheet.last_row).each do |row_num|
+#         row_data = {}
+
+#         headers.each_with_index do |header, index|
+#           value = sheet.cell(row_num, index + 1)
+#           # Remove o prefixo 'm' dos anos se existir
+#           header = header.to_s.gsub(/^m/, '') if header.is_a?(String)
+#           row_data[header] = value if value && !value.to_s.strip.empty?
+#         end
+
+#         data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
+#       end
+
+#       content_type :json
+#       { data: data }.to_json
+#     else
+#       status 404
+#       body "Arquivo #{filename} não encontrado!"
+#     end
+#   end
+# end
 get '/ler_arquivo' do
   filename = params[:filename]
+  sheet_number = params[:planilha]&.to_i
+
+  unless sheet_number
+    sheet_number = 0
+  end
 
   # Verifica se o parâmetro filename foi fornecido
   if filename.nil? || filename.empty?
@@ -51,7 +139,7 @@ get '/ler_arquivo' do
     if File.exist?(filepath)
       # Ler o arquivo .xlsx usando roo
       xlsx = Roo::Spreadsheet.open(filepath)
-      sheet = xlsx.sheet(0)
+      sheet = xlsx.sheet(sheet_number)
 
       # Extrair cabeçalhos
       headers = sheet.row(1)
@@ -59,11 +147,90 @@ get '/ler_arquivo' do
       # Preparar dados para retorno
       data = []
 
-      # Limitar a leitura aos primeiros 50 registros
-      max_rows = [sheet.last_row, 51].min # Incluindo a linha do cabeçalho
+      # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
+      (2..sheet.last_row).each do |row_num|
+        row_data = {}
 
-      # Iterar sobre as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
-      (2..max_rows).each do |row_num|
+        headers.each_with_index do |header, index|
+          value = sheet.cell(row_num, index + 1)
+          # Remove o prefixo 'm' dos anos se existir
+          header = header.to_s.gsub(/^m/, '') if header.is_a?(String)
+          row_data[header] = value
+        end
+
+        data << row_data
+      end
+
+      content_type :json
+      { data: data }.to_json
+    else
+      status 404
+      body "Arquivo #{filename} não encontrado!"
+    end
+  end
+end
+
+get '/ler_arquivo_pge' do
+  filename = params[:filename]
+  sheet_number = params[:planilha]&.to_i
+
+  unless sheet_number
+    sheet_number = 0
+  end
+
+  # Verifica se o parâmetro filename foi fornecido
+  if filename.nil? || filename.empty?
+    status 400
+    body "Parâmetro 'filename' não especificado!"
+  else
+    filepath = "#{settings.upload_folder}/#{filename}"
+
+    # Verifica se o arquivo existe
+    if File.exist?(filepath)
+      # Ler o arquivo .xlsx usando roo
+      xlsx = Roo::Spreadsheet.open(filepath)
+      sheet = xlsx.sheet(sheet_number)
+
+      # Extrair cabeçalhos
+      headers = sheet.row(1)
+
+      # Preparar estrutura para contagem por anos e soma dos valores 0.0 e asteristicos
+      years = headers.select { |header| header.is_a?(Integer) || (header.is_a?(String) && header.match?(/^\d{4}$/)) }
+      counts_by_year = {}
+      total_rows_minus_asterisks_zeros = {}
+
+      # Inicializar hashes para contagem e total de linhas menos asteriscos e zeros
+      years.each do |year|
+        counts_by_year[year] = { asterisks: 0, zeros: 0 }
+        total_rows_minus_asterisks_zeros[year] = sheet.last_row - 1  # Total de linhas menos o cabeçalho
+
+        # Inicialmente subtrai a soma de asteriscos e zeros
+        total_rows_minus_asterisks_zeros[year] -= counts_by_year[year][:asterisks]
+        total_rows_minus_asterisks_zeros[year] -= counts_by_year[year][:zeros]
+      end
+
+      # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
+      (2..sheet.last_row).each do |row_num|
+        headers.each_with_index do |header, index|
+          value = sheet.cell(row_num, index + 1)
+          next unless years.include?(header)
+
+          # Atualizar contagem para o ano correspondente
+          if value == "*****"
+            counts_by_year[header][:asterisks] += 1
+          elsif value.to_f == 0.0
+            counts_by_year[header][:zeros] += 1
+          end
+
+          # Atualizar total de linhas menos asteriscos e zeros para o ano correspondente
+          total_rows_minus_asterisks_zeros[header] -= 1 if value == "*****" || value.to_f == 0.0
+        end
+      end
+
+      # Preparar dados finais no formato desejado
+      data = []
+
+      (2..sheet.last_row).each do |row_num|
         row_data = {}
 
         headers.each_with_index do |header, index|
@@ -76,8 +243,14 @@ get '/ler_arquivo' do
         data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
       end
 
+      # Montar o resultado final para retorno
+      result = {
+        data: data,
+        counts_by_year: counts_by_year.transform_values { |counts| counts.merge(total_rows_minus_asterisks_zeros: total_rows_minus_asterisks_zeros) }
+      }
+
       content_type :json
-      { data: data }.to_json
+      result.to_json
     else
       status 404
       body "Arquivo #{filename} não encontrado!"
@@ -100,86 +273,48 @@ get '/listar_arquivos' do
   end
 end
 
-# Gerar relatório em PDF com ajustes de layout
 get '/gerar_relatorio' do
   filename = params[:filename]
 
-  # Verifica se o parâmetro filename foi fornecido
   if filename.nil? || filename.empty?
     status 400
     body "Parâmetro 'filename' não especificado!"
   else
     filepath = "#{settings.upload_folder}/#{filename}"
 
-    # Verifica se o arquivo existe
     if File.exist?(filepath)
-      # Ler o arquivo .xlsx usando roo
       xlsx = Roo::Spreadsheet.open(filepath)
       sheet = xlsx.sheet(0)
 
-      # Extrair cabeçalhos
-      headers = sheet.row(1)
-
-      # Preparar dados para inclusão no PDF
-      data = []
-
-      # Limitar a leitura aos primeiros 50 registros (51 com cabeçalho)
+      @headers = sheet.row(1)
+      @data = []
       max_rows = [sheet.last_row, 51].min
 
-      # Iterar sobre as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
       (2..max_rows).each do |row_num|
         row_data = {}
 
-        headers.each_with_index do |header, index|
+        @headers.each_with_index do |header, index|
           value = sheet.cell(row_num, index + 1)
-          # Remove o prefixo 'm' dos anos se existir
           header = header.to_s.gsub(/^m/, '') if header.is_a?(String)
           row_data[header] = value if value && !value.to_s.strip.empty?
         end
 
-        data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
+        @data << row_data if row_data.any?
       end
 
-      # Gerar o PDF usando Prawn
-      pdf = Prawn::Document.new(page_size: 'A4', page_layout: :landscape, compress: true)
+      html_content = erb :relatorio, layout: false
 
-      # Configurações de estilo
-      pdf.font "Helvetica"
-
-      # Título do relatório
-      pdf.text "Relatório de Dados", size: 20, style: :bold
-      pdf.move_down 20
-
-      # Configurações da tabela
-      table_data = [headers.map { |header| header.to_s.gsub(/^m/, '') }] + data.map(&:values)
-
-      pdf.table(table_data, header: true, width: pdf.bounds.width) do
-        # Estilo da primeira linha (cabeçalho)
-        row(0).font_style = :bold
-        row(0).background_color = 'AAAAAA'
-        row(0).text_color = 'FFFFFF'
-
-        # Estilo das células
-        cells.padding = [5, 5, 5, 5]
-        cells.size = 10
-
-        # Borda das células
-        cells.borders = [:top, :bottom, :left, :right]
-        cells.border_width = 1
-        cells.border_color = '999999'
+      output_path = "public/relatorio.pdf"
+      pdf = WickedPdf.new.pdf_from_string(html_content)
+      File.open(output_path, 'wb') do |file|
+        file << pdf
       end
 
-      # Salvar o PDF na pasta public
-      public_pdf_path = "#{settings.public_folder}/relatorio_#{filename.gsub('.xlsx', '')}.pdf"
-      pdf.render_file(public_pdf_path)
-
-      # Retornar a URL do PDF gerado
-      content_type :json
-      { url: "#{request.base_url}/relatorio_#{filename.gsub('.xlsx', '')}.pdf" }.to_json
+      status 200
+      body "Relatório gerado com sucesso! Acesse o relatório em: /relatorio.pdf"
     else
       status 404
       body "Arquivo #{filename} não encontrado!"
     end
   end
 end
-

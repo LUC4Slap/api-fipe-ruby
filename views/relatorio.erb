@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+<body>
+  <h1>Relatório de Dados</h1>
+  <table>
+    <thead>
+      <tr>
+        <% @headers.each do |header| %>
+          <th><%= header.to_s.gsub(/^m/, '') %></th>
+        <% end %>
+      </tr>
+    </thead>
+    <tbody>
+      <% @data.each do |row| %>
+        <tr>
+          <% row.each_value do |value| %>
+            <td><%= value %></td>
+          <% end %>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</body>
+</html>
