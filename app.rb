@@ -72,54 +72,6 @@ get '/listar_arquivos_db' do
 end
 
 # Endpoint para ler as linhas de um arquivo .xlsx
-# get '/ler_arquivo' do
-#   filename = params[:filename]
-#   sheet_number = params[:planilha]&.to_i or 0
-
-#   # Verifica se o parâmetro filename foi fornecido
-#   if filename.nil? || filename.empty?
-#     status 400
-#     body "Parâmetro 'filename' não especificado!"
-#   else
-#     filepath = "#{settings.upload_folder}/#{filename}"
-
-#     # Verifica se o arquivo existe
-#     if File.exist?(filepath)
-#       # Ler o arquivo .xlsx usando roo
-#       xlsx = Roo::Spreadsheet.open(filepath)
-#       sheet = xlsx.sheet(sheet_number)
-
-#       # Extrair cabeçalhos
-#       headers = sheet.row(0)
-
-#       # Preparar dados para retorno
-#       data = []
-
-#       # Limitar a leitura aos primeiros 50 registros
-#       max_rows = [sheet.last_row, 51].min # Incluindo a linha do cabeçalho
-
-#       # Iterar sobre as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
-#       (2..sheet.last_row).each do |row_num|
-#         row_data = {}
-
-#         headers.each_with_index do |header, index|
-#           value = sheet.cell(row_num, index + 1)
-#           # Remove o prefixo 'm' dos anos se existir
-#           header = header.to_s.gsub(/^m/, '') if header.is_a?(String)
-#           row_data[header] = value if value && !value.to_s.strip.empty?
-#         end
-
-#         data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
-#       end
-
-#       content_type :json
-#       { data: data }.to_json
-#     else
-#       status 404
-#       body "Arquivo #{filename} não encontrado!"
-#     end
-#   end
-# end
 get '/ler_arquivo' do
   filename = params[:filename]
   sheet_number = params[:planilha]&.to_i
