@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Atividades</title>
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+    th {
+      background-color: #f2f2f2;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <h1>Atividades</h1>
+  <table>
+    <thead>
+      <tr>
+        <% headers.each do |header| %>
+          <th><%= header %></th>
+        <% end %>
+      </tr>
+    </thead>
+    <tbody>
+      <% data.each do |row| %>
+        <tr>
+          <% headers.each do |header| %>
+            <td><%= row[header] %></td>
+          <% end %>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</body>
+</html>

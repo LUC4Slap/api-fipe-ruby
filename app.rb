@@ -29,6 +29,13 @@ def html_to_pdf(html_content, output_path)
   end
 end
 
+COMPLEXITY_MAPPING = {
+  1 => 'Simples',
+  2 => 'Média',
+  3 => 'Complexa',
+  4 => 'Super Complexa'
+}
+
 # Endpoint para verificar se a API está funcionando
 get '/' do
   "API de Upload de Arquivos está funcionando!"
@@ -58,6 +65,7 @@ post '/upload' do
   end
 end
 
+# Listar arquivos do banco de dados
 get '/listar_arquivos_db' do
   query = "SELECT * FROM caminho_arquivos"
   arquivos = []
@@ -75,6 +83,8 @@ end
 get '/ler_arquivo' do
   filename = params[:filename]
   sheet_number = params[:planilha]&.to_i
+  filter_peso = params[:peso]&.to_f
+  filter_complexidade = params[:complexidade]
 
   unless sheet_number
     sheet_number = 0
@@ -107,10 +117,20 @@ get '/ler_arquivo' do
           value = sheet.cell(row_num, index + 1)
           # Remove o prefixo 'm' dos anos se existir
           header = header.to_s.gsub(/^m/, '') if header.is_a?(String)
-          row_data[header] = value
-        end
+          
+          # teste
+          if filter_peso.nil? || row_data['Peso'] == filter_peso
+            if filter_complexidade.nil? || COMPLEXITY_MAPPING[row_data['Complexidade']] == COMPLEXITY_MAPPING[filter_complexidade]
+              # Substituir o valor da complexidade pelo seu mapeamento numérico
+              row_data['Complexidade'] = COMPLEXITY_MAPPING[row_data['Complexidade']]
+              data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
+            end
+          end
+          # fim teste
 
-        data << row_data
+          # row_data[header] = value
+        end
+        data << row_data 
       end
 
       content_type :json
@@ -269,4 +289,107 @@ get '/gerar_relatorio' do
       body "Arquivo #{filename} não encontrado!"
     end
   end
+end
+
+# Ler catalo mil tec
+# get '/ler_arquivo_catalogo' do
+#   filename = params[:filename]
+#   filter_peso = params[:peso]&.to_f
+#   filter_complexidade = params[:complexidade] ? COMPLEXITY_MAPPING[params[:complexidade].to_i] : nil
+
+#   # Verifica se o parâmetro filename foi fornecido
+#   if filename.nil? || filename.empty?
+#     status 400
+#     body "Parâmetro 'filename' não especificado!"
+#   else
+#     filepath = "#{settings.upload_folder}/#{filename}"
+
+#     # Verifica se o arquivo existe
+#     if File.exist?(filepath)
+#       # Ler o arquivo .xlsx usando roo
+#       xlsx = Roo::Spreadsheet.open(filepath)
+#       sheet = xlsx.sheet(0)
+
+#       # Extrair cabeçalhos
+#       headers = sheet.row(1)
+
+#       # Preparar dados para retorno
+#       data = []
+
+#       # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
+#       (2..sheet.last_row).each do |row_num|
+#         row_data = {}
+
+#         headers.each_with_index do |header, index|
+#           value = sheet.cell(row_num, index + 1)
+#           row_data[header] = value if value && !value.to_s.strip.empty?
+#         end
+
+#         # Aplicar filtros se especificados
+#         if (filter_peso.nil? || row_data['Peso'] == filter_peso) &&
+#            (filter_complexidade.nil? || row_data['Complexidade'] == filter_complexidade)
+#           data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
+#         end
+#       end
+
+#       content_type :json
+#       { data: data }.to_json
+#     else
+#       status 404
+#       body "Arquivo #{filename} não encontrado!"
+#     end
+#   end
+# end
+
+get '/ler_arquivo_catalogo' do
+  filename = params[:filename]
+  filter_peso = params[:peso]&.to_f
+  filter_complexidade = params[:complexidade] ? COMPLEXITY_MAPPING[params[:complexidade].to_i] : nil
+
+  # Verifica se o parâmetro filename foi fornecido
+  if filename.nil? || filename.empty?
+    status 400
+    body "Parâmetro 'filename' não especificado!"
+  else
+    filepath = "#{settings.upload_folder}/#{filename}"
+
+    # Verifica se o arquivo existe
+    if File.exist?(filepath)
+      # Ler o arquivo .xlsx usando roo
+      xlsx = Roo::Spreadsheet.open(filepath)
+      sheet = xlsx.sheet(0)
+
+      # Extrair cabeçalhos
+      headers = sheet.row(1)
+
+      # Preparar dados para retorno
+      data = []
+
+      # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
+      (2..sheet.last_row).each do |row_num|
+        row_data = {}
+
+        headers.each_with_index do |header, index|
+          value = sheet.cell(row_num, index + 1)
+          row_data[header] = value if value && !value.to_s.strip.empty?
+        end
+
+        # Aplicar filtros se especificados
+        if (filter_peso.nil? || row_data['Peso'] == filter_peso) &&
+           (filter_complexidade.nil? || row_data['Complexidade'] == filter_complexidade)
+          data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
+        end
+      end
+
+      # Renderizar a tabela HTML
+      erb :atividades, locals: { headers: headers, data: data }
+    else
+      status 404
+      body "Arquivo #{filename} não encontrado!"
+    end
+  end
+end
+
+get '/teste_html' do
+  erb :index
 end
