@@ -345,7 +345,16 @@ end
 get '/ler_arquivo_catalogo' do
   filename = params[:filename]
   filter_peso = params[:peso].to_f unless params[:peso].nil? || params[:peso].empty?
+  filter_atividade = params[:atividade] unless params[:atividade].nil? || params[:atividade].empty?
+  filter_sub_grupo = params[:subGrupo] unless params[:subGrupo].nil? || params[:subGrupo].empty?
   filter_complexidade = params[:complexidade] ? COMPLEXITY_MAPPING[params[:complexidade].to_i] : nil
+
+  def remove_accents(str)
+    str.tr(
+      'áàãâäéèêëíìîïóòõôöúùûüçÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ',
+      'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC'
+    )
+  end
 
 
   # Verifica se o parâmetro filename foi fornecido
@@ -378,7 +387,9 @@ get '/ler_arquivo_catalogo' do
 
         # Aplicar filtros se especificados
         if (filter_peso.nil? || row_data['Peso'] == filter_peso && filter_peso != nil) &&
-           (filter_complexidade.nil? || row_data['Complexidade'] == filter_complexidade)
+           (filter_complexidade.nil? || row_data['Complexidade'] == filter_complexidade) &&
+           (filter_atividade.nil? || remove_accents(row_data['Atividade']).downcase.include?(remove_accents(filter_atividade).downcase)) &&
+           (filter_sub_grupo.nil? || remove_accents(row_data['SubGrupo']).downcase.include?(remove_accents(filter_sub_grupo).downcase))
           data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
         end
       end

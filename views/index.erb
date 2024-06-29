@@ -1,5 +1,5 @@
 <div class="d-flex flex-column justify-content-center align-items-center">
-  <div class="card p-3 rounded-2" style="margin-top: 15%; width: 500px;">
+  <div class="card p-3 rounded-2" style="margin-top: 10%; width: 600px;">
       <div class="card-header">
       <!-- Título do card -->
       <h3 class="card-title">Buscar Tarefas</h3>
@@ -7,15 +7,36 @@
     <!-- Corpo do card -->
     <div class="card-body">
       <form action="ler_arquivo_catalogo" method="GET">
+        <div class="row">
+          <div class="col-6">
+              <label>Complexidade</label>
+              <select class="form-control mb-4" name="complexidade" name="complexidade">
+                <option value="">Selecione...</option>
+                <option value="1">Simples</option>
+                <option value="2">Média</option>
+                <option value="3">Complexa</option>
+                <option value="4">Super Complexa</option>
+              </select>
+          </div>
+
+          <div class="col-6">
+              <label>Pontos</label>
+              <input class="form-control mb-4" type="text" placeholder="Pontos da atividade" name="peso" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-6">
+            <label>Sub Grupo</label>
+            <input class="form-control mb-4" type="text" placeholder="Sub Grupo" name="subGrupo" />
+          </div>
+          <div class="col-6">
+            <label>Atividade</label>
+            <input class="form-control mb-4" type="text" placeholder="Nome da atividade" name="atividade" />
+          </div>
+        </div>
+
         <input type="hidden" name="filename" value="Catalogo de atividades - APOSTILADO.xlsx" />
-        <select class="form-control mb-4" name="complexidade" name="complexidade">
-            <option value="">Selecione...</option>
-            <option value="1">Simples</option>
-            <option value="2">Média</option>
-            <option value="3">Complexa</option>
-            <option value="4">Super Complexa</option>
-          </select>
-        <input class="form-control mb-4" type="text" placeholder="Pontos da atividade" name="peso" />
         <button class="w-100 btn btn-primary">Buscar</button>
       </form>
     </div>
