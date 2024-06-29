@@ -3,22 +3,22 @@ require 'sinatra/reloader' if development?
 require 'roo'
 require 'json'
 require 'prawn'
-require 'prawn/table'
+# require 'prawn/table'
 require 'wicked_pdf'
 require 'erb'
 require 'fileutils'
 require 'pg'
 
-conn = PG.connect( 
-  dbname: 'uploads',
-  host: 'localhost',
-  port: 5432,
-  user: 'postgres',
-  password: '123456'
-)
+# conn = PG.connect( 
+#   dbname: 'uploads',
+#   host: 'localhost',
+#   port: 5432,
+#   user: 'postgres',
+#   password: '123456'
+# )
 
 set :public_folder, 'public'
-set :views, 'views'
+set :views, 'views', Proc.new { File.join(root, "views") }
 set :upload_folder, 'uploads'
 
 # Helper para converter HTML para PDF
@@ -38,7 +38,7 @@ COMPLEXITY_MAPPING = {
 
 # Endpoint para verificar se a API está funcionando
 get '/' do
-  "API de Upload de Arquivos está funcionando!"
+  erb :index, layout: :'layouts/layout' #, locals: { headers: headers, data: data }
 end
 
 # Endpoint para upload de arquivos
@@ -55,8 +55,8 @@ post '/upload' do
     File.open(filepath, 'wb') do |f|
       f.write(file.read)
     end
-    conn.exec("INSERT INTO caminho_arquivos (caminho) VALUES ('#{filepath}')")
-    conn.close
+    # conn.exec("INSERT INTO caminho_arquivos (caminho) VALUES ('#{filepath}')")
+    # conn.close
     status 200
     body "Arquivo #{filename} foi carregado com sucesso!"
   else
@@ -67,16 +67,17 @@ end
 
 # Listar arquivos do banco de dados
 get '/listar_arquivos_db' do
-  query = "SELECT * FROM caminho_arquivos"
-  arquivos = []
-  result = conn.exec(query)
-  result.each do |row|
-    arquivos << row['caminho']
-  end
-  # conn.close
-  status 200
-  content_type :json
-  { data: arquivos }.to_json
+  "Banco fora"
+  # query = "SELECT * FROM caminho_arquivos"
+  # arquivos = []
+  # result = conn.exec(query)
+  # result.each do |row|
+  #   arquivos << row['caminho']
+  # end
+  # # conn.close
+  # status 200
+  # content_type :json
+  # { data: arquivos }.to_json
 end
 
 # Endpoint para ler as linhas de um arquivo .xlsx
@@ -343,8 +344,9 @@ end
 
 get '/ler_arquivo_catalogo' do
   filename = params[:filename]
-  filter_peso = params[:peso]&.to_f
+  filter_peso = params[:peso].to_f unless params[:peso].nil? || params[:peso].empty?
   filter_complexidade = params[:complexidade] ? COMPLEXITY_MAPPING[params[:complexidade].to_i] : nil
+
 
   # Verifica se o parâmetro filename foi fornecido
   if filename.nil? || filename.empty?
@@ -375,14 +377,14 @@ get '/ler_arquivo_catalogo' do
         end
 
         # Aplicar filtros se especificados
-        if (filter_peso.nil? || row_data['Peso'] == filter_peso) &&
+        if (filter_peso.nil? || row_data['Peso'] == filter_peso && filter_peso != nil) &&
            (filter_complexidade.nil? || row_data['Complexidade'] == filter_complexidade)
           data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
         end
       end
 
       # Renderizar a tabela HTML
-      erb :atividades, locals: { headers: headers, data: data }
+      erb :atividades,layout: :'layouts/layout', locals: { headers: headers, data: data }
     else
       status 404
       body "Arquivo #{filename} não encontrado!"
