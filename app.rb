@@ -9,7 +9,7 @@ require 'erb'
 require 'fileutils'
 require 'pg'
 
-# conn = PG.connect( 
+# conn = PG.connect(
 #   dbname: 'uploads',
 #   host: 'localhost',
 #   port: 5432,
@@ -20,6 +20,9 @@ require 'pg'
 set :public_folder, 'public'
 set :views, 'views', Proc.new { File.join(root, "views") }
 set :upload_folder, 'uploads'
+
+# Requerer as rotas
+Dir[File.join(__dir__, 'routes', '*.rb')].each { |file| require file }
 
 # Helper para converter HTML para PDF
 def html_to_pdf(html_content, output_path)
@@ -37,33 +40,9 @@ COMPLEXITY_MAPPING = {
 }
 
 # Endpoint para verificar se a API está funcionando
-get '/' do
-  erb :index, layout: :'layouts/layout' #, locals: { headers: headers, data: data }
-end
 
-# Endpoint para upload de arquivos
-post '/upload' do
-  if params[:file] && params[:file][:filename]
-    filename = params[:file][:filename]
-    file = params[:file][:tempfile]
 
-    # Cria a pasta de uploads se não existir
-    Dir.mkdir(settings.upload_folder) unless Dir.exist?(settings.upload_folder)
 
-    # Salva o arquivo no diretório de uploads
-    filepath = "#{settings.upload_folder}/#{filename}"
-    File.open(filepath, 'wb') do |f|
-      f.write(file.read)
-    end
-    # conn.exec("INSERT INTO caminho_arquivos (caminho) VALUES ('#{filepath}')")
-    # conn.close
-    status 200
-    body "Arquivo #{filename} foi carregado com sucesso!"
-  else
-    status 400
-    body "Nenhum arquivo foi enviado!"
-  end
-end
 
 # Listar arquivos do banco de dados
 get '/listar_arquivos_db' do
@@ -80,156 +59,7 @@ get '/listar_arquivos_db' do
   # { data: arquivos }.to_json
 end
 
-# Endpoint para ler as linhas de um arquivo .xlsx
-get '/ler_arquivo' do
-  filename = params[:filename]
-  sheet_number = params[:planilha]&.to_i
-  filter_peso = params[:peso]&.to_f
-  filter_complexidade = params[:complexidade]
 
-  unless sheet_number
-    sheet_number = 0
-  end
-
-  # Verifica se o parâmetro filename foi fornecido
-  if filename.nil? || filename.empty?
-    status 400
-    body "Parâmetro 'filename' não especificado!"
-  else
-    filepath = "#{settings.upload_folder}/#{filename}"
-
-    # Verifica se o arquivo existe
-    if File.exist?(filepath)
-      # Ler o arquivo .xlsx usando roo
-      xlsx = Roo::Spreadsheet.open(filepath)
-      sheet = xlsx.sheet(sheet_number)
-
-      # Extrair cabeçalhos
-      headers = sheet.row(1)
-
-      # Preparar dados para retorno
-      data = []
-
-      # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
-      (2..sheet.last_row).each do |row_num|
-        row_data = {}
-
-        headers.each_with_index do |header, index|
-          value = sheet.cell(row_num, index + 1)
-          # Remove o prefixo 'm' dos anos se existir
-          header = header.to_s.gsub(/^m/, '') if header.is_a?(String)
-          
-          # teste
-          if filter_peso.nil? || row_data['Peso'] == filter_peso
-            if filter_complexidade.nil? || COMPLEXITY_MAPPING[row_data['Complexidade']] == COMPLEXITY_MAPPING[filter_complexidade]
-              # Substituir o valor da complexidade pelo seu mapeamento numérico
-              row_data['Complexidade'] = COMPLEXITY_MAPPING[row_data['Complexidade']]
-              data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
-            end
-          end
-          # fim teste
-
-          # row_data[header] = value
-        end
-        data << row_data 
-      end
-
-      content_type :json
-      { data: data }.to_json
-    else
-      status 404
-      body "Arquivo #{filename} não encontrado!"
-    end
-  end
-end
-
-get '/ler_arquivo_pge' do
-  filename = params[:filename]
-  sheet_number = params[:planilha]&.to_i
-
-  unless sheet_number
-    sheet_number = 0
-  end
-
-  # Verifica se o parâmetro filename foi fornecido
-  if filename.nil? || filename.empty?
-    status 400
-    body "Parâmetro 'filename' não especificado!"
-  else
-    filepath = "#{settings.upload_folder}/#{filename}"
-
-    # Verifica se o arquivo existe
-    if File.exist?(filepath)
-      # Ler o arquivo .xlsx usando roo
-      xlsx = Roo::Spreadsheet.open(filepath)
-      sheet = xlsx.sheet(sheet_number)
-
-      # Extrair cabeçalhos
-      headers = sheet.row(1)
-
-      # Preparar estrutura para contagem por anos e soma dos valores 0.0 e asteristicos
-      years = headers.select { |header| header.is_a?(Integer) || (header.is_a?(String) && header.match?(/^\d{4}$/)) }
-      counts_by_year = {}
-      total_rows_minus_asterisks_zeros = {}
-
-      # Inicializar hashes para contagem e total de linhas menos asteriscos e zeros
-      years.each do |year|
-        counts_by_year[year] = { asterisks: 0, zeros: 0 }
-        total_rows_minus_asterisks_zeros[year] = sheet.last_row - 1  # Total de linhas menos o cabeçalho
-
-        # Inicialmente subtrai a soma de asteriscos e zeros
-        total_rows_minus_asterisks_zeros[year] -= counts_by_year[year][:asterisks]
-        total_rows_minus_asterisks_zeros[year] -= counts_by_year[year][:zeros]
-      end
-
-      # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
-      (2..sheet.last_row).each do |row_num|
-        headers.each_with_index do |header, index|
-          value = sheet.cell(row_num, index + 1)
-          next unless years.include?(header)
-
-          # Atualizar contagem para o ano correspondente
-          if value == "*****"
-            counts_by_year[header][:asterisks] += 1
-          elsif value.to_f == 0.0
-            counts_by_year[header][:zeros] += 1
-          end
-
-          # Atualizar total de linhas menos asteriscos e zeros para o ano correspondente
-          total_rows_minus_asterisks_zeros[header] -= 1 if value == "*****" || value.to_f == 0.0
-        end
-      end
-
-      # Preparar dados finais no formato desejado
-      data = []
-
-      (2..sheet.last_row).each do |row_num|
-        row_data = {}
-
-        headers.each_with_index do |header, index|
-          value = sheet.cell(row_num, index + 1)
-          # Remove o prefixo 'm' dos anos se existir
-          header = header.to_s.gsub(/^m/, '') if header.is_a?(String)
-          row_data[header] = value if value && !value.to_s.strip.empty?
-        end
-
-        data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
-      end
-
-      # Montar o resultado final para retorno
-      result = {
-        data: data,
-        counts_by_year: counts_by_year.transform_values { |counts| counts.merge(total_rows_minus_asterisks_zeros: total_rows_minus_asterisks_zeros) }
-      }
-
-      content_type :json
-      result.to_json
-    else
-      status 404
-      body "Arquivo #{filename} não encontrado!"
-    end
-  end
-end
 
 # Endpoint para listar todos os arquivos no diretório de uploads
 get '/listar_arquivos' do
@@ -285,117 +115,6 @@ get '/gerar_relatorio' do
 
       status 200
       body "Relatório gerado com sucesso! Acesse o relatório em: /relatorio.pdf"
-    else
-      status 404
-      body "Arquivo #{filename} não encontrado!"
-    end
-  end
-end
-
-# Ler catalo mil tec
-# get '/ler_arquivo_catalogo' do
-#   filename = params[:filename]
-#   filter_peso = params[:peso]&.to_f
-#   filter_complexidade = params[:complexidade] ? COMPLEXITY_MAPPING[params[:complexidade].to_i] : nil
-
-#   # Verifica se o parâmetro filename foi fornecido
-#   if filename.nil? || filename.empty?
-#     status 400
-#     body "Parâmetro 'filename' não especificado!"
-#   else
-#     filepath = "#{settings.upload_folder}/#{filename}"
-
-#     # Verifica se o arquivo existe
-#     if File.exist?(filepath)
-#       # Ler o arquivo .xlsx usando roo
-#       xlsx = Roo::Spreadsheet.open(filepath)
-#       sheet = xlsx.sheet(0)
-
-#       # Extrair cabeçalhos
-#       headers = sheet.row(1)
-
-#       # Preparar dados para retorno
-#       data = []
-
-#       # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
-#       (2..sheet.last_row).each do |row_num|
-#         row_data = {}
-
-#         headers.each_with_index do |header, index|
-#           value = sheet.cell(row_num, index + 1)
-#           row_data[header] = value if value && !value.to_s.strip.empty?
-#         end
-
-#         # Aplicar filtros se especificados
-#         if (filter_peso.nil? || row_data['Peso'] == filter_peso) &&
-#            (filter_complexidade.nil? || row_data['Complexidade'] == filter_complexidade)
-#           data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
-#         end
-#       end
-
-#       content_type :json
-#       { data: data }.to_json
-#     else
-#       status 404
-#       body "Arquivo #{filename} não encontrado!"
-#     end
-#   end
-# end
-
-get '/ler_arquivo_catalogo' do
-  filename = params[:filename]
-  filter_peso = params[:peso].to_f unless params[:peso].nil? || params[:peso].empty?
-  filter_atividade = params[:atividade] unless params[:atividade].nil? || params[:atividade].empty?
-  filter_sub_grupo = params[:subGrupo] unless params[:subGrupo].nil? || params[:subGrupo].empty?
-  filter_complexidade = params[:complexidade] ? COMPLEXITY_MAPPING[params[:complexidade].to_i] : nil
-
-  def remove_accents(str)
-    str.tr(
-      'áàãâäéèêëíìîïóòõôöúùûüçÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ',
-      'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC'
-    )
-  end
-
-
-  # Verifica se o parâmetro filename foi fornecido
-  if filename.nil? || filename.empty?
-    status 400
-    body "Parâmetro 'filename' não especificado!"
-  else
-    filepath = "#{settings.upload_folder}/#{filename}"
-
-    # Verifica se o arquivo existe
-    if File.exist?(filepath)
-      # Ler o arquivo .xlsx usando roo
-      xlsx = Roo::Spreadsheet.open(filepath)
-      sheet = xlsx.sheet(0)
-
-      # Extrair cabeçalhos
-      headers = sheet.row(1)
-
-      # Preparar dados para retorno
-      data = []
-
-      # Iterar sobre todas as linhas (começando da segunda linha, pois a primeira é o cabeçalho)
-      (2..sheet.last_row).each do |row_num|
-        row_data = {}
-
-        headers.each_with_index do |header, index|
-          value = sheet.cell(row_num, index + 1)
-          row_data[header] = value if value && !value.to_s.strip.empty?
-        end
-
-        # Aplicar filtros se especificados
-        if (filter_peso.nil? || row_data['Peso'] == filter_peso && filter_peso != nil) &&
-           (filter_complexidade.nil? || row_data['Complexidade'] == filter_complexidade) &&
-           (filter_atividade.nil? || remove_accents(row_data['Atividade']).downcase.include?(remove_accents(filter_atividade).downcase)) &&
-           (filter_sub_grupo.nil? || remove_accents(row_data['SubGrupo']).downcase.include?(remove_accents(filter_sub_grupo).downcase))
-          data << row_data if row_data.any? # Adiciona apenas se houver dados na linha
-        end
-      end
-
-      # Renderizar a tabela HTML
-      erb :atividades,layout: :'layouts/layout', locals: { headers: headers, data: data }
     else
       status 404
       body "Arquivo #{filename} não encontrado!"
